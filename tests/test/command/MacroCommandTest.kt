@@ -11,7 +11,7 @@ internal class MacroCommandTest {
     @Test
     fun `executed commands can undo`() {
         val macro = command() + command()
-        macro.execute(CommandContext())
+        macro.execute()
         assertCounts(2, 0)
         macro.undo()
         assertCounts(2, 2)
@@ -21,7 +21,7 @@ internal class MacroCommandTest {
     fun `resume commands`() {
         val macro = command() + command()
         macro.restore(listOf(1))
-        macro.execute(CommandContext())
+        macro.execute()
         assertCounts(1, 0)
     }
 
@@ -29,7 +29,7 @@ internal class MacroCommandTest {
     fun `resumed commands can undo`() {
         val macro = command() + command()
         macro.restore(listOf(1))
-        macro.execute(CommandContext())
+        macro.execute()
         macro.undo()
         assertCounts(1, 2)
     }
@@ -46,7 +46,7 @@ internal class MacroCommandTest {
     fun `executed in order`() {
         val result = mutableListOf<String>()
         val macro = command { result.add("A") } + command { result.add("B") }
-        assertTrue(macro.execute(CommandContext()))
+        assertTrue(macro.execute())
         assertOrder(result, "A", "B")
     }
 
@@ -55,7 +55,7 @@ internal class MacroCommandTest {
         val result = mutableListOf<String>()
         val macro = command { result.add("A") } + command { result.add("B") }
         macro.restore(listOf(1))
-        assertTrue(macro.execute(CommandContext()))
+        assertTrue(macro.execute())
         assertOrder(result, "B")
     }
 
@@ -63,7 +63,7 @@ internal class MacroCommandTest {
     fun `undo in reverse order of execution`() {
         val result = mutableListOf<String>()
         val macro = command(undo = { result.add("A"); }) + command(undo = { result.add("B"); })
-        macro.execute(CommandContext())
+        macro.execute()
         macro.undo()
         assertOrder(result, "B", "A")
     }
@@ -71,7 +71,7 @@ internal class MacroCommandTest {
     @Test
     fun `execution stops in case of error`() {
         val macro = command { false } + command()
-        assertFalse(macro.execute(CommandContext()))
+        assertFalse(macro.execute())
         assertCounts(1, 0)
     }
 
@@ -79,10 +79,10 @@ internal class MacroCommandTest {
     fun `resume execution`() {
         var halt = true
         val macro = command { !halt } + command()
-        macro.execute(CommandContext())
+        macro.execute()
         assertCounts(1, 0)
         halt = false
-        macro.execute(CommandContext())
+        macro.execute()
         assertCounts(3, 0)
     }
 
@@ -92,7 +92,7 @@ internal class MacroCommandTest {
         val macro1 = command { result.add("A1") } + command { result.add("B1") }
         val macro2 = TestCommand(listOf(command { result.add("A2") }))
         val macro = macro1 + macro2
-        macro.execute(CommandContext())
+        macro.execute()
         assertState(macro, listOf(2, 2, 1))
         assertCounts(3, 0)
         assertOrder(result, "A1", "B1", "A2")
@@ -117,11 +117,11 @@ internal class MacroCommandTest {
         val macro1 = command { result.add("A1") } + command { result.add("B1"); !halt }
         val macro2 = TestCommand(listOf(command { result.add("A2") }))
         val macro = macro1 + macro2
-        macro.execute(CommandContext())
+        macro.execute()
         assertCounts(2, 0)
         assertState(macro, listOf(0, 1, 0))
         halt = false
-        macro.execute(CommandContext())
+        macro.execute()
         assertCounts(4, 0)
         assertOrder(result, "A1", "B1", "B1", "A2")
     }
@@ -148,10 +148,10 @@ internal class MacroCommandTest {
         assertEquals(expected, macro.state())
     }
 
-    private fun command(undo: () -> Unit = {}, cmd: (ICommandContext) -> Boolean = { true }) = object : Command {
-        override fun execute(context: ICommandContext): Boolean {
+    private fun command(undo: () -> Unit = {}, cmd: () -> Boolean = { true }) = object : Command {
+        override fun execute(): Boolean {
             executeCounts++
-            return cmd(context)
+            return cmd()
         }
 
         override fun undo() {

@@ -19,7 +19,7 @@ internal class NeedMediatorTest {
         val need = createNewNeed()
         // execute stops because
         // some command needs more information
-        assertFalse(need.execute(CommandContext()))
+        assertFalse(need.execute())
     }
 
     @Test
@@ -30,7 +30,7 @@ internal class NeedMediatorTest {
         val need = restoreNeedFromDB()
         // update need more information
         need.personalia(personalia)
-        assertTrue(need.execute(CommandContext()))
+        assertTrue(need.execute())
     }
 
     private fun createNewNeed() = PaymentNeed(dao, FNR)
@@ -57,7 +57,7 @@ internal class NeedMediatorTest {
         private val fnr: String
     ): Command {
 
-        override fun execute(context: ICommandContext): Boolean {
+        override fun execute(): Boolean {
             return personDao.insertPerson(fnr)
         }
 
@@ -73,7 +73,7 @@ internal class NeedMediatorTest {
             this.personalia = personalia
         }
 
-        override fun execute(context: ICommandContext): Boolean {
+        override fun execute(): Boolean {
             val info = personalia ?: return false
             info.updatePersonalia(personDao)
             return true

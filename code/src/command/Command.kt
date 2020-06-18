@@ -1,20 +1,8 @@
 package command
 
 interface Command {
-    fun execute(context: ICommandContext): Boolean
+    fun execute(): Boolean
     fun undo()
-}
-
-interface ICommandContext {
-    fun error(message: String)
-    fun hasErrors(): Boolean
-}
-
-class CommandContext() : ICommandContext {
-    private val errors = mutableListOf<String>()
-
-    override fun error(message: String) { errors.add(message) }
-    override fun hasErrors() = errors.isNotEmpty()
 }
 
 abstract class MacroCommand : Command {
@@ -26,9 +14,9 @@ abstract class MacroCommand : Command {
         commands.add(command)
     }
 
-    final override fun execute(context: ICommandContext): Boolean {
+    final override fun execute(): Boolean {
         for (command in commands.listIterator(currentCommand)) {
-            if (!command.execute(context)) return false
+            if (!command.execute()) return false
             executedCommands.add(0, command)
             currentCommand += 1
         }

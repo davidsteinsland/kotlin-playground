@@ -27,12 +27,10 @@ abstract class MacroCommand : Command {
     }
 
     final override fun execute(context: ICommandContext): Boolean {
-        ensureHistory()
         return doExecute(context)
     }
 
     final override fun undo() {
-        ensureHistory()
         for (command in executedCommands) command.undo()
         reset()
     }
@@ -48,11 +46,16 @@ abstract class MacroCommand : Command {
 
     private fun _restore(states: MutableList<Int>) {
         require(states.isNotEmpty()) { "state list does not contain enough states" }
-        currentCommand = states.removeAt(0)
+        restoreHistory(states.removeAt(0))
         for (command in commands) {
             if (command !is MacroCommand) continue
             command._restore(states)
         }
+    }
+
+    private fun restoreHistory(currentIndex: Int) {
+        currentCommand = currentIndex
+        for (i in 0 until currentIndex) executedCommands.add(0, commands[i])
     }
 
     fun state(): List<Int> {
@@ -67,11 +70,6 @@ abstract class MacroCommand : Command {
             if (command !is MacroCommand) continue
             command._state(states)
         }
-    }
-
-    private fun ensureHistory() {
-        if (executedCommands.isNotEmpty()) return
-        for (i in 0 until currentCommand) executedCommands.add(0, commands[i])
     }
 
     private fun reset() {

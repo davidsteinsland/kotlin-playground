@@ -53,10 +53,8 @@ internal class MacroCommandTest {
     @Test
     fun `resume execution after instantiation`() {
         val result = mutableListOf<String>()
-        val macro = TestCommand(
-            commands = listOf(command { result.add("A"); true }, command { result.add("B"); true }),
-            currentCommand = 1
-        )
+        val macro = TestCommand(listOf(command { result.add("A"); true }, command { result.add("B"); true }))
+        macro.restore(listOf(1))
         macro.execute(CommandContext())
         assertEquals("B", result[0])
     }
@@ -64,9 +62,21 @@ internal class MacroCommandTest {
     @Test
     fun `undo after reinstantiation when commands are added after init`() {
         val result = mutableListOf<String>()
-        val macro = TestCommand(commands = emptyList(), currentCommand = 2)
+        val macro = TestCommand(emptyList())
         macro.addCommand(command(undo = { result.add("A") }))
         macro.addCommand(command(undo = { result.add("B") }))
+        macro.restore(listOf(2))
+        macro.undo()
+        assertEquals("B", result[0])
+        assertEquals("A", result[1])
+    }
+
+    @Test
+    fun `resume then undo`() {
+        val result = mutableListOf<String>()
+        val macro = TestCommand(listOf(command(undo = { result.add("A") }), command(undo = { result.add("B") })))
+        macro.restore(listOf(1))
+        macro.execute(CommandContext())
         macro.undo()
         assertEquals("B", result[0])
         assertEquals("A", result[1])
@@ -75,7 +85,8 @@ internal class MacroCommandTest {
     @Test
     fun `undo after reinstantiation`() {
         val result = mutableListOf<String>()
-        val macro = TestCommand(commands = listOf(command(undo = { result.add("A") }), command(undo = { result.add("B") })), currentCommand = 2)
+        val macro = TestCommand(listOf(command(undo = { result.add("A") }), command(undo = { result.add("B") })))
+        macro.restore(listOf(2))
         macro.undo()
         assertEquals("B", result[0])
         assertEquals("A", result[1])
@@ -84,7 +95,7 @@ internal class MacroCommandTest {
     @Test
     fun `macro can have macro commands`() {
         val result = mutableListOf<String>()
-        val macro = TestCommand(commands = listOf(
+        val macro = TestCommand(listOf(
             TestCommand(listOf(command { result.add("A1"); true }, command { result.add("B1"); true })),
             TestCommand(listOf(command { result.add("A2"); true }))
         ))
@@ -98,7 +109,7 @@ internal class MacroCommandTest {
     fun `macro can resume macro commands`() {
         val result = mutableListOf<String>()
         var halt = true
-        val macro = TestCommand(commands = listOf(
+        val macro = TestCommand(listOf(
             TestCommand(listOf(command { result.add("A1"); true }, command { result.add("B1"); !halt })),
             TestCommand(listOf(command { result.add("A2"); true }))
         ))
@@ -116,7 +127,7 @@ internal class MacroCommandTest {
     fun `macro states`() {
         val result = mutableListOf<String>()
         var halt = true
-        val macro = TestCommand(commands = listOf(
+        val macro = TestCommand(listOf(
             TestCommand(listOf(command { result.add("A1"); true }, command { result.add("B1"); !halt })),
             TestCommand(listOf(command { result.add("A2"); true }))
         ))
@@ -130,7 +141,7 @@ internal class MacroCommandTest {
     @Test
     fun `resume macro after restore`() {
         val result = mutableListOf<String>()
-        val macro = TestCommand(commands = listOf(
+        val macro = TestCommand(listOf(
             TestCommand(listOf(command { result.add("A1"); true }, command { result.add("B1"); false })),
             TestCommand(listOf(command { result.add("A2"); true }))
         ))
@@ -143,7 +154,7 @@ internal class MacroCommandTest {
     @Test
     fun `undo macro with macros after execute`() {
         val result = mutableListOf<String>()
-        val macro = TestCommand(commands = listOf(
+        val macro = TestCommand(listOf(
             TestCommand(listOf(command(undo = { result.add("A1") }), command(undo = { result.add("B1") }))),
             TestCommand(listOf(command(undo = { result.add("A2") })))
         ))
@@ -157,7 +168,7 @@ internal class MacroCommandTest {
     @Test
     fun `undo macro after restore`() {
         val result = mutableListOf<String>()
-        val macro = TestCommand(commands = listOf(
+        val macro = TestCommand(listOf(
             TestCommand(listOf(command(undo = { result.add("A1") }), command(undo = { result.add("B1") }))),
             TestCommand(listOf(command(undo = { result.add("A2") })))
         ))
@@ -182,12 +193,8 @@ internal class MacroCommandTest {
         return TestCommand(listOf(this, other))
     }
 
-    private class TestCommand(
-        commands: List<Command>,
-        currentCommand: Int = 0
-    ) : MacroCommand() {
+    private class TestCommand(commands: List<Command>) : MacroCommand() {
         init {
-            restore(listOf(currentCommand))
             commands.forEach(::add)
         }
 

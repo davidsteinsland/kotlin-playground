@@ -20,6 +20,7 @@ internal class NeedMediatorTest {
         // execute stops because
         // some command needs more information
         assertFalse(need.execute())
+        saveInDB(need)
     }
 
     @Test
@@ -39,6 +40,11 @@ internal class NeedMediatorTest {
         val need = createNewNeed()
         need.restore(listOf(1))
         return need
+    }
+
+    private fun saveInDB(need: PaymentNeed) {
+        val state = need.state()
+        // store state as json
     }
 
     private class PaymentNeed(personDao: PersonDao, fnr: String) : MacroCommand() {

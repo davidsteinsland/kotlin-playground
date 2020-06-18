@@ -27,7 +27,12 @@ abstract class MacroCommand : Command {
     }
 
     final override fun execute(context: ICommandContext): Boolean {
-        return doExecute(context)
+        for (command in commands.listIterator(currentCommand)) {
+            if (!command.execute(context)) return false
+            executedCommands.add(0, command)
+            currentCommand += 1
+        }
+        return true
     }
 
     final override fun undo() {
@@ -75,14 +80,5 @@ abstract class MacroCommand : Command {
     private fun reset() {
         currentCommand = 0
         executedCommands.clear()
-    }
-
-    private fun doExecute(context: ICommandContext): Boolean {
-        for (command in commands.listIterator(currentCommand)) {
-            executedCommands.add(0, command)
-            if (!command.execute(context)) return false
-            currentCommand += 1
-        }
-        return true
     }
 }

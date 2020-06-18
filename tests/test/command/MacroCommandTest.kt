@@ -2,27 +2,61 @@ package command
 
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 internal class MacroCommandTest {
 
     @Test
-    fun `executed in order`() {
-        val result = mutableListOf<String>()
-        val macro = command { result.add("A"); true } + command { result.add("B"); true }
-        assertTrue(macro.execute(CommandContext()))
-        assertEquals("A", result[0])
-        assertEquals("B", result[1])
+    fun `executed commands can undo`() {
+        val macro = command() + command()
+        macro.execute(CommandContext())
+        assertCounts(2, 0)
+        macro.undo()
+        assertCounts(2, 2)
     }
 
     @Test
-    fun `execution stops in case of error`() {
+    fun `resume commands`() {
+        val macro = command() + command()
+        macro.restore(listOf(1))
+        macro.execute(CommandContext())
+        assertCounts(1, 0)
+    }
+
+    @Test
+    fun `resumed commands can undo`() {
+        val macro = command() + command()
+        macro.restore(listOf(1))
+        macro.execute(CommandContext())
+        macro.undo()
+        assertCounts(1, 2)
+    }
+
+    @Test
+    fun `completed commands can undo`() {
+        val macro = command() + command()
+        macro.restore(listOf(2))
+        macro.undo()
+        assertCounts(0, 2)
+    }
+
+    @Test
+    fun `executed in order`() {
         val result = mutableListOf<String>()
-        val macro = command { result.add("A"); false } + command { result.add("B"); true }
-        assertFalse(macro.execute(CommandContext()))
-        assertEquals(1, result.size)
-        assertEquals("A", result[0])
+        val macro = command { result.add("A") } + command { result.add("B") }
+        assertTrue(macro.execute(CommandContext()))
+        assertOrder(result, "A", "B")
+    }
+
+    @Test
+    fun `resumed in order`() {
+        val result = mutableListOf<String>()
+        val macro = command { result.add("A") } + command { result.add("B") }
+        macro.restore(listOf(1))
+        assertTrue(macro.execute(CommandContext()))
+        assertOrder(result, "B")
     }
 
     @Test
@@ -31,160 +65,97 @@ internal class MacroCommandTest {
         val macro = command(undo = { result.add("A"); }) + command(undo = { result.add("B"); })
         macro.execute(CommandContext())
         macro.undo()
-        assertEquals("B", result[0])
-        assertEquals("A", result[1])
+        assertOrder(result, "B", "A")
+    }
+
+    @Test
+    fun `execution stops in case of error`() {
+        val macro = command { false } + command()
+        assertFalse(macro.execute(CommandContext()))
+        assertCounts(1, 0)
     }
 
     @Test
     fun `resume execution`() {
-        val result = mutableListOf<String>()
         var halt = true
-        val macro = command { result.add("A"); !halt } + command { result.add("B"); true }
+        val macro = command { !halt } + command()
         macro.execute(CommandContext())
-        assertEquals(1, result.size)
-        assertEquals("A", result[0])
+        assertCounts(1, 0)
         halt = false
         macro.execute(CommandContext())
-        assertEquals("A", result[0])
-        assertEquals("A", result[1])
-        assertEquals("B", result[2])
-    }
-
-    @Test
-    fun `resume execution after instantiation`() {
-        val result = mutableListOf<String>()
-        val macro = TestCommand(listOf(command { result.add("A"); true }, command { result.add("B"); true }))
-        macro.restore(listOf(1))
-        macro.execute(CommandContext())
-        assertEquals("B", result[0])
-    }
-
-    @Test
-    fun `undo after reinstantiation when commands are added after init`() {
-        val result = mutableListOf<String>()
-        val macro = TestCommand(emptyList())
-        macro.addCommand(command(undo = { result.add("A") }))
-        macro.addCommand(command(undo = { result.add("B") }))
-        macro.restore(listOf(2))
-        macro.undo()
-        assertEquals("B", result[0])
-        assertEquals("A", result[1])
-    }
-
-    @Test
-    fun `resume then undo`() {
-        val result = mutableListOf<String>()
-        val macro = TestCommand(listOf(command(undo = { result.add("A") }), command(undo = { result.add("B") })))
-        macro.restore(listOf(1))
-        macro.execute(CommandContext())
-        macro.undo()
-        assertEquals("B", result[0])
-        assertEquals("A", result[1])
-    }
-
-    @Test
-    fun `undo after reinstantiation`() {
-        val result = mutableListOf<String>()
-        val macro = TestCommand(listOf(command(undo = { result.add("A") }), command(undo = { result.add("B") })))
-        macro.restore(listOf(2))
-        macro.undo()
-        assertEquals("B", result[0])
-        assertEquals("A", result[1])
+        assertCounts(3, 0)
     }
 
     @Test
     fun `macro can have macro commands`() {
         val result = mutableListOf<String>()
-        val macro = TestCommand(listOf(
-            TestCommand(listOf(command { result.add("A1"); true }, command { result.add("B1"); true })),
-            TestCommand(listOf(command { result.add("A2"); true }))
-        ))
+        val macro1 = command { result.add("A1") } + command { result.add("B1") }
+        val macro2 = TestCommand(listOf(command { result.add("A2") }))
+        val macro = macro1 + macro2
         macro.execute(CommandContext())
-        assertEquals("A1", result[0])
-        assertEquals("B1", result[1])
-        assertEquals("A2", result[2])
+        assertState(macro, listOf(2, 2, 1))
+        assertCounts(3, 0)
+        assertOrder(result, "A1", "B1", "A2")
+    }
+
+    @Test
+    fun `macro can undo`() {
+        val result = mutableListOf<String>()
+        val macro1 = command(undo = { result.add("A1") }) + command(undo = { result.add("B1") })
+        val macro2 = TestCommand(listOf(command(undo = { result.add("A2") })))
+        val macro = macro1 + macro2
+        macro.restore(listOf(2, 2, 1))
+        macro.undo()
+        assertCounts(0, 3)
+        assertOrder(result, "A2", "B1", "A1")
     }
 
     @Test
     fun `macro can resume macro commands`() {
         val result = mutableListOf<String>()
         var halt = true
-        val macro = TestCommand(listOf(
-            TestCommand(listOf(command { result.add("A1"); true }, command { result.add("B1"); !halt })),
-            TestCommand(listOf(command { result.add("A2"); true }))
-        ))
+        val macro1 = command { result.add("A1") } + command { result.add("B1"); !halt }
+        val macro2 = TestCommand(listOf(command { result.add("A2") }))
+        val macro = macro1 + macro2
         macro.execute(CommandContext())
-        assertEquals(2, result.size)
+        assertCounts(2, 0)
+        assertState(macro, listOf(0, 1, 0))
         halt = false
         macro.execute(CommandContext())
-        assertEquals("A1", result[0])
-        assertEquals("B1", result[1])
-        assertEquals("B1", result[2])
-        assertEquals("A2", result[3])
+        assertCounts(4, 0)
+        assertOrder(result, "A1", "B1", "B1", "A2")
     }
 
-    @Test
-    fun `macro states`() {
-        val result = mutableListOf<String>()
-        var halt = true
-        val macro = TestCommand(listOf(
-            TestCommand(listOf(command { result.add("A1"); true }, command { result.add("B1"); !halt })),
-            TestCommand(listOf(command { result.add("A2"); true }))
-        ))
-        macro.execute(CommandContext())
-        assertEquals(listOf(0, 1, 0), macro.state())
-        halt = false
-        macro.execute(CommandContext())
-        assertEquals(listOf(2, 2, 1), macro.state())
+    private var executeCounts = 0
+    private var undoCounts = 0
+
+    @BeforeEach
+    fun reset() {
+        executeCounts = 0
+        undoCounts = 0
     }
 
-    @Test
-    fun `resume macro after restore`() {
-        val result = mutableListOf<String>()
-        val macro = TestCommand(listOf(
-            TestCommand(listOf(command { result.add("A1"); true }, command { result.add("B1"); false })),
-            TestCommand(listOf(command { result.add("A2"); true }))
-        ))
-        macro.restore(listOf(1, 2, 0))
-        macro.execute(CommandContext())
-        assertEquals("A2", result[0])
-        assertEquals(listOf(2, 2, 1), macro.state())
+    private fun assertCounts(expectedExecuteCounts: Int, expectedUndoCounts: Int) {
+        assertEquals(expectedExecuteCounts, executeCounts)
+        assertEquals(expectedUndoCounts, undoCounts)
     }
 
-    @Test
-    fun `undo macro with macros after execute`() {
-        val result = mutableListOf<String>()
-        val macro = TestCommand(listOf(
-            TestCommand(listOf(command(undo = { result.add("A1") }), command(undo = { result.add("B1") }))),
-            TestCommand(listOf(command(undo = { result.add("A2") })))
-        ))
-        macro.execute(CommandContext())
-        macro.undo()
-        assertEquals("A2", result[0])
-        assertEquals("B1", result[1])
-        assertEquals("A1", result[2])
+    private fun assertOrder(actual: List<String>, vararg expected: String) {
+        assertEquals(expected.toList(), actual)
     }
 
-    @Test
-    fun `undo macro after restore`() {
-        val result = mutableListOf<String>()
-        val macro = TestCommand(listOf(
-            TestCommand(listOf(command(undo = { result.add("A1") }), command(undo = { result.add("B1") }))),
-            TestCommand(listOf(command(undo = { result.add("A2") })))
-        ))
-        macro.restore(listOf(2, 2, 1))
-        macro.undo()
-        assertEquals("A2", result[0])
-        assertEquals("B1", result[1])
-        assertEquals("A1", result[2])
+    private fun assertState(macro: MacroCommand, expected: List<Int>) {
+        assertEquals(expected, macro.state())
     }
 
     private fun command(undo: () -> Unit = {}, cmd: (ICommandContext) -> Boolean = { true }) = object : Command {
         override fun execute(context: ICommandContext): Boolean {
+            executeCounts++
             return cmd(context)
         }
 
         override fun undo() {
+            undoCounts++
             undo()
         }
     }
